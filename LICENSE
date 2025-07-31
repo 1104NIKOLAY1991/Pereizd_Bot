@@ -3,7 +3,7 @@ from math import radians, cos, sin, sqrt, atan2
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-BOT_TOKEN = "8310551533:AAHdAP2ypXbq2ilGnTJWaZHO4Scq6OYwYDo"
+"UQA9OFD7XEt4M2uMIz8k0mwvXkbpydgODTH2fpCKaQcKMdiY"
 
 LANGS = ['uk', 'en']
 
