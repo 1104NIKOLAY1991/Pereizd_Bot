@@ -1,0 +1,6 @@
+# PereizdUA_Bot
+Бот для Telegram: укр+англ, поиск ближайшего переезда, переключение языка.
+
+## Установка
+1. `pip install -r requirements.txt`
+2. Запустите: `python main.py`
