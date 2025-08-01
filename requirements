@@ -1,1 +1,143 @@
-python-telegram-bot==20.6
+import sqlite3
+import os
+from math import radians, cos, sin, sqrt, atan2
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
+# Можно использовать переменные окружения, но для примера оставим так:
+BOT_TOKEN = "8310551533:AAHdAP2ypXbq2ilGnTJWaZHO4Scq6OYwYDo"
+
+TEXTS = {
+    'start': {
+        'uk': "Привіт! Я бот для перевірки стану залізничних переїздів 🚂",
+        'en': "Hi! I'm a bot to check railway crossing status 🚂"
+    },
+    'menu': {
+        'uk': "Оберіть опцію:",
+        'en': "Choose an option:"
+    },
+    'nearest': {
+        'uk': "📍 Знайти найближчий переїзд",
+        'en': "📍 Find nearest crossing"
+    },
+    'by_region': {
+        'uk': "📋 Переїзди по області",
+        'en': "📋 Crossings by region"
+    },
+    'change_lang': {
+        'uk': "🌐 Змінити мову",
+        'en': "🌐 Change language"
+    },
+    'send_location': {
+        'uk': "Будь ласка, надішліть свою геолокацію 🌍",
+        'en': "Please send your location 🌍"
+    },
+    'found': {
+        'uk': "Найближчий переїзд:",
+        'en': "Nearest crossing:"
+    },
+    'switched': {
+        'uk': "Мову змінено на українську 🇺🇦",
+        'en': "Language switched to English 🇬🇧"
+    }
+}
+
+user_langs = {}  # хранит язык для каждого пользователя
+
+
+def get_text(key, lang):
+    return TEXTS[key].get(lang, TEXTS[key]['en'])
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return R * c
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_langs[user_id] = 'uk'  # по умолчанию укр
+    lang = user_langs[user_id]
+
+    buttons = [
+        [KeyboardButton(get_text('nearest', lang), request_location=True)],
+        [get_text('by_region', lang)],
+        [get_text('change_lang', lang)]
+    ]
+    markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    await update.message.reply_text(
+        get_text('start', lang) + "\n" + get_text('menu', lang),
+        reply_markup=markup
+    )
+
+
+async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = user_langs.get(user_id, 'uk')
+    user_loc = update.message.location
+
+    try:
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, latitude, longitude, status FROM crossings")
+        crossings = cursor.fetchall()
+        conn.close()
+
+        if not crossings:
+            await update.message.reply_text("У базі немає переїздів / No crossings in database")
+            return
+
+        nearest = None
+        min_dist = float('inf')
+        for name, lat, lon, status in crossings:
+            dist = haversine(user_loc.latitude, user_loc.longitude, lat, lon)
+            if dist < min_dist:
+                min_dist = dist
+                nearest = (name, status, dist)
+
+        if nearest:
+            msg = f"{get_text('found', lang)} {nearest[0]} ({nearest[1]}), ~{nearest[2]:.1f} km"
+        else:
+            msg = "Not found"
+        await update.message.reply_text(msg)
+
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = user_langs.get(user_id, 'uk')
+    text = update.message.text
+
+    if text == get_text('by_region', lang):
+        await update.message.reply_text("Функція в розробці / Feature in development")
+    elif text == get_text('change_lang', lang):
+        new_lang = 'en' if lang == 'uk' else 'uk'
+        user_langs[user_id] = new_lang
+        buttons = [
+            [KeyboardButton(get_text('nearest', new_lang), request_location=True)],
+            [get_text('by_region', new_lang)],
+            [get_text('change_lang', new_lang)]
+        ]
+        markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+        await update.message.reply_text(get_text('switched', new_lang), reply_markup=markup)
+    else:
+        await update.message.reply_text(get_text('send_location', lang))
+
+
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.LOCATION, handle_location))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    print("Бот запущен 🚀")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
